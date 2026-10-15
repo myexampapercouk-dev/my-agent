@@ -2,14 +2,14 @@
 export default {
   // CRM login (read-only Viewer account is enough) - the agent reads all designs + stock from here
   CRM_BASE_URL: "https://crm.ittanjeweller.com",
-  CRM_EMAIL: "sameergpt9719@gmail.com",
-  CRM_PASSWORD: "f#53NEBamecm1",
+  CRM_EMAIL: "navpreetn87@gmail.com",
+  CRM_PASSWORD: "Fateh@3288",
 
   // Store WhatsApp number for "Enquire on WhatsApp" buttons (used unless changed in Admin → Settings)
   WHATSAPP_PHONE: "9914905216",
 
   // Password for the admin panel (/admin). Empty = no login.
-  ADMIN_PASSWORD: "Ittan@kgSZH0aF#26",
+  ADMIN_PASSWORD: "Fateh@3288",
 
   // Claude API key (starts with sk-ant-api03-). Empty = free basic mode.
   ANTHROPIC_API_KEY: "",
