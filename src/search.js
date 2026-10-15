@@ -2,24 +2,27 @@
 // shoppers type (Hinglish names, common misspellings).
 import { load } from './store.js';
 
+// Later words in a group are the spellings that Gurmukhi/Devanagari typing
+// turns into (romanize() in meaning.js): "ਚੂੜੀ" → "chooree", "पायल" → "paayal".
 const SYNONYMS = [
-  ['necklace', 'neckless', 'necklac', 'haar', 'har', 'neklace', 'set', 'kaintha', 'kantha'],
-  ['earring', 'earrings', 'tops', 'jhumka', 'jhumki', 'bali', 'baali', 'studs', 'kaan', 'valiyan', 'waliyan', 'baliyan', 'kante'],
-  ['ring', 'rings', 'anguthi', 'angoothi', 'mundri', 'band', 'challa', 'chhalla', 'chhaap'],
-  ['mangalsutra', 'mangalsutre', 'mangal', 'sutar', 'mangalsutar'],
-  ['pendant', 'pendent', 'pendal', 'locket'],
-  ['chain', 'chains', 'zanjeer'],
-  ['bracelet', 'braclet', 'kada', 'kadaa'],
-  ['bangle', 'bangles', 'kangan', 'chudi', 'choodi'],
-  ['murti', 'idol', 'statue', 'god', 'bhagwan'],
-  ['anklet', 'payal', 'pajeb', 'payel', 'jhanjar', 'jhanjran', 'pazeb'],
-  ['tikka', 'maang', 'mang', 'maangtikka'],
+  ['necklace', 'neckless', 'necklac', 'haar', 'har', 'neklace', 'set', 'kaintha', 'kantha', 'kainthaa'],
+  ['earring', 'earrings', 'tops', 'jhumka', 'jhumki', 'bali', 'baali', 'studs', 'kaan', 'valiyan', 'waliyan', 'baliyan', 'kante',
+    'jhumke', 'jhumake', 'jhumakaa', 'baalee', 'baaleeaan', 'vaaleeaan', 'kaante'],
+  ['ring', 'rings', 'anguthi', 'angoothi', 'mundri', 'band', 'challa', 'chhalla', 'chhaap', 'angoothee', 'mundaree', 'chhalaa'],
+  ['mangalsutra', 'mangalsutre', 'mangal', 'sutar', 'mangalsutar', 'mangalasootar', 'mangalasootr', 'mangalsootr'],
+  ['pendant', 'pendent', 'pendal', 'locket', 'laaket', 'loket'],
+  ['chain', 'chains', 'zanjeer', 'chen'],
+  ['bracelet', 'braclet', 'kada', 'kadaa', 'karaa'],
+  ['bangle', 'bangles', 'kangan', 'chudi', 'choodi', 'chudiyan', 'chooree', 'chooreeaan', 'choodee', 'choodiyaan'],
+  ['murti', 'idol', 'statue', 'god', 'bhagwan', 'moorti', 'mooratee'],
+  ['anklet', 'payal', 'pajeb', 'payel', 'jhanjar', 'jhanjran', 'pazeb', 'paayal', 'jhaanjar', 'panjeb'],
+  ['tikka', 'maang', 'mang', 'maangtikka', 'tikaa', 'teekaa'],
   ['nose', 'nath', 'nosepin', 'laung'],
   ['gents', 'men', 'mens', 'male', 'boys', 'gent'],
   ['ladies', 'women', 'womens', 'female', 'girls', 'lady'],
   ['baby', 'kids', 'child', 'children'],
-  ['gold', 'sona', 'sone'],
-  ['silver', 'chandi', 'chaandi'],
+  ['gold', 'sona', 'sone', 'sonaa'],
+  ['silver', 'chandi', 'chaandi', 'chaandee'],
 ];
 const SYN = new Map();
 for (const group of SYNONYMS) for (const w of group) SYN.set(w, group);

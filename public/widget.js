@@ -76,7 +76,7 @@
     '  <div class="head"><div class="t"><b class="name"></b><span>Usually replies instantly</span></div><button class="new" title="Start a new chat">New chat</button><button class="close" aria-label="Close">✕</button></div>' +
     '  <div class="msgs" aria-live="polite"></div>' +
     '  <a class="walink" target="_blank" rel="noopener" style="display:none">Prefer WhatsApp? Chat with our team →</a>' +
-    '  <form class="foot"><button type="button" class="cam" aria-label="Upload a photo to find similar designs" title="Upload a photo to find similar designs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button><input type="file" accept="image/*" hidden><textarea rows="1" placeholder="Ask about designs, or send a photo…" maxlength="1000"></textarea><button type="submit" class="send">Send</button></form>' +
+    '  <form class="foot"><button type="button" class="cam" aria-label="Upload a photo to find similar designs" title="Upload a photo to find similar designs"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg></button><input type="file" accept="image/*" hidden><textarea rows="1" placeholder="Ask about designs…" maxlength="1000"></textarea><button type="submit" class="send">Send</button></form>' +
     '</div>' +
     '<div class="zoom"><img alt=""></div>';
 

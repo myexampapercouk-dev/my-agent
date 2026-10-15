@@ -10,7 +10,7 @@ import { create, insertMultiple, getByID, search, save, load as loadDb, count } 
 import config from './config.js';
 import { DATA_DIR, load } from './store.js';
 import { SYN, words, STOP, publicProduct, findByCode, searchProducts } from './search.js';
-import { embed, translate } from './meaning.js';
+import { embed, translate, romanize } from './meaning.js';
 
 const DIR = path.join(DATA_DIR, 'vectors');
 const FILE = path.join(DIR, 'products-v2.json'); // bump when SCHEMA changes
@@ -164,6 +164,18 @@ const AUDIENCE = {
 };
 const PHRASE_TYPES = [[/black\s*beads?/, 'mangalsutra'], [/fore\s*head|maang/, 'tikka'], [/\b(ganesh|ganpati|lakshmi|laxmi|krishna|shiv|shiva|hanuman|durga|god|bhagwan)\b/, 'murti']];
 
+// Words used in the synced catalogue (titles, collections); rebuilt after each sync.
+let vocabFor = null;
+let vocabSet = new Set();
+function catalogueWords() {
+  const { products, syncedAt } = load('catalog');
+  if (vocabFor !== syncedAt) {
+    vocabSet = new Set(products.flatMap((p) => words(`${p.title} ${p.catalogues.join(' ')}`)));
+    vocabFor = syncedAt;
+  }
+  return vocabSet;
+}
+
 /**
  * Hybrid product search. Same result shape as the keyword searchProducts(),
  * or null when the vector database is not available (caller falls back).
@@ -174,7 +186,12 @@ export async function vectorSearchProducts({ query = '', metal, purity, min_pric
     await openDb();
     if (!ready) return null;
 
-    const qWords = words(translate(query))
+    // Jewellery words skip the Hinglish word list ("kada" isn't "khada" = park).
+    // One the catalogue never uses brings its main name along, so "ਚੇਨ" →
+    // "chen chain" finds chains while "fish lock bali" stays as typed.
+    const vocab = catalogueWords();
+    const qWords = words(romanize(query))
+      .flatMap((w) => (!SYN.has(w) ? words(translate(w)) : vocab.has(w) ? [w] : [w, SYN.get(w)[0]]))
       .map((w) => AUDIENCE[w] ?? w)
       // keyword half matches word starts, so tiny words ("to", "pe") would match "tops"/"pendant"
       .filter((w) => w && w.length > 2 && !NOISE.has(w) && !/^\d/.test(w));
@@ -221,7 +238,12 @@ export async function vectorSearchProducts({ query = '', metal, purity, min_pric
       // Filters only ("under 30k"): everything that fits, cheapest first.
       res = await search(db, { term: '', where, limit: from + n, includeVectors: false, sortBy: { property: 'price', order: 'ASC' } });
     }
-    const products = res.hits.slice(from, from + n).map((h) => findByCode(h.id)).filter(Boolean).map(publicProduct);
+    // Re-check budget/weight on today's prices: right after a sync the index
+    // still holds the old ones until the designs are re-embedded.
+    const inRange = (v, lo, hi) => (lo == null && hi == null) || (v != null && v >= (lo ?? -Infinity) && v <= (hi ?? Infinity));
+    const products = res.hits.slice(from, from + n).map((h) => findByCode(h.id))
+      .filter((p) => p && inRange(p.price, min_price, max_price) && inRange(p.weightG, min_weight, max_weight))
+      .map(publicProduct);
     return { total_matches: res.count, products };
   } catch (err) {
     console.error('[vectors] search failed, using keyword search:', err.message);
