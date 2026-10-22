@@ -253,5 +253,6 @@ export async function vectorSearchProducts({ query = '', metal, purity, min_pric
 
 /** Product search used everywhere: vector database first, keyword search as fallback. */
 export async function findProducts(params) {
+  if (params.offers_only) return searchProducts(params); // plain filter, no meaning search
   return (await vectorSearchProducts(params)) || searchProducts(params);
 }

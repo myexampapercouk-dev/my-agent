@@ -175,9 +175,12 @@ async function doDirectSync() {
 
 let timer = null;
 
+// Background sync every 15 minutes. The website also calls /api/sync-hook right
+// after each of its own CRM syncs, so both show the same designs.
+const SYNC_EVERY_MS = 15 * 60_000;
+
 export function scheduleSync() {
   clearInterval(timer);
-  const hours = Math.max(0.25, Number(load('settings').syncIntervalHours) || 1);
-  timer = setInterval(() => syncCatalog().catch((e) => console.error('[crm]', e)), hours * 3600_000);
+  timer = setInterval(() => syncCatalog().catch((e) => console.error('[crm]', e)), SYNC_EVERY_MS);
   timer.unref();
 }

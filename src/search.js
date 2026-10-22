@@ -41,10 +41,12 @@ export function cardOf(p) {
     code: p.code,
     title: p.title,
     purity: p.purity,
-    weightG: p.weightG,
     price: p.price,
     compareAtPrice: p.compareAtPrice && p.compareAtPrice > p.price ? p.compareAtPrice : null,
     image: p.thumb || p.image,
+    photo: p.image || null, // full-size photo, shared in the WhatsApp enquiry message
+    discountPct: p.discountPct || null,
+    discountQty: p.discountQty || null,
     url: p.url,
   };
 }
@@ -77,12 +79,12 @@ export function publicProduct(p) {
     title: p.title,
     metal: p.metal,
     purity: p.purity,
-    weight_g: p.weightG,
     price_inr: p.price ?? 'not listed - ask the store team',
     mrp_inr: p.compareAtPrice && p.compareAtPrice > p.price ? p.compareAtPrice : undefined,
     collections: p.catalogues,
     pieces_in_stock: p.inStock,
-    other_piece_weights_g: p.weightsG?.length > 1 ? p.weightsG : undefined,
+    discount_pct: p.discountPct || undefined,
+    discount_on_first_n_pieces: p.discountQty || undefined,
   };
 }
 
@@ -91,13 +93,14 @@ export function findByCode(code) {
   return load('catalog').products.find((p) => p.code.toUpperCase() === c) || null;
 }
 
-export function searchProducts({ query = '', metal, purity, min_price, max_price, min_weight, max_weight, limit = 8, offset = 0 }) {
+export function searchProducts({ query = '', metal, purity, min_price, max_price, min_weight, max_weight, offers_only, limit = 8, offset = 0 }) {
   const products = load('catalog').products;
   const terms = words(query).filter((t) => !STOP.has(t));
   const purityQ = purity ? String(purity).toUpperCase().replace(/\s+/g, '') : null;
 
   const scored = [];
   for (const p of products) {
+    if (offers_only && !p.discountPct) continue;
     if (metal && p.metal !== metal) continue;
     if (purityQ && !p.purity.toUpperCase().replace(/\s+/g, '').includes(purityQ)) continue;
     if (min_price != null && (p.price == null || p.price < min_price)) continue;

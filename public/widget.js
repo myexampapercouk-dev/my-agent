@@ -18,6 +18,16 @@
   var state = readState();
   state.log = state.log || [];
 
+  // Name, phone, email, city, pincode asked once before the first chat; kept on
+  // this device so returning customers go straight to the chat.
+  var CUSTOMER_KEY = 'ittan_customer_v1';
+  var customer = null;
+  try { customer = JSON.parse(localStorage.getItem(CUSTOMER_KEY)); } catch (e) { customer = null; }
+
+  // Offers set in the CRM (a discount % on some pieces) are always shown to
+  // customers as this making charge, whatever % was set (store's choice).
+  var OFFER_LABEL = '3%';
+
   var cfg = { assistantName: 'Assistant', welcomeMessage: 'Hi! How can I help you?', accentColor: '#b8860b', whatsappPhone: '' };
 
   var host = document.createElement('div');
@@ -50,7 +60,8 @@
     '.card .b{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}' +
     '.card .n{font-size:13.5px;font-weight:600;line-height:1.3}' +
     '.card .meta{font-size:11.5px;color:#7a6c58}' +
-    '.card .p{font-size:14.5px;font-weight:700;color:#1f1f1f}.card .p s{font-weight:400;color:#9a8f80;font-size:12px;margin-left:5px}' +
+    '.card .off{align-self:flex-start;background:#fdecea;color:#b12704;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;margin:2px 0}' +
+'.card .p{font-size:14.5px;font-weight:700;color:#1f1f1f}.card .p s{font-weight:400;color:#9a8f80;font-size:12px;margin-left:5px}' +
     '.card a.wa{margin-top:auto;align-self:flex-start;background:#25d366;color:#fff;text-decoration:none;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px}' +
     '.more{align-self:stretch;border:1px solid var(--accent);background:#fff;color:var(--accent);border-radius:10px;padding:9px;font-size:13.5px;font-weight:600;cursor:pointer}' +
     '.more:disabled{opacity:.6;cursor:default}' +
@@ -66,6 +77,15 @@
     '.foot .cam svg{width:20px;height:20px}' +
     '.m.user img.up{display:block;max-width:180px;max-height:180px;border-radius:10px;margin-bottom:4px}' +
     '.m.user.photo{padding:5px}' +
+    '.start{align-self:stretch;background:#fff;border:1px solid #eee3d3;border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:7px}' +
+    '.start p{margin:0 0 2px;font-size:13.5px;color:#4a3f30;line-height:1.4}' +
+    '.start label{font-size:12px;color:#7a6c58;margin-top:2px}' +
+    '.start input{border:1px solid #ddd;border-radius:9px;padding:9px 11px;font-size:14px;outline:none;color:#1f1f1f;background:#fff;width:100%}' +
+    '.start input:focus{border-color:var(--accent)}' +
+    '.start .ferr{color:#b12704;font-size:12.5px;min-height:0}' +
+    '.start button{margin-top:4px;border:0;background:var(--accent);color:#fff;border-radius:10px;padding:11px;font-size:14.5px;font-weight:600;cursor:pointer}' +
+    '.start button:disabled{opacity:.6;cursor:default}' +
+    '.start small{font-size:11px;color:#9a8f80;text-align:center}' +
     '.walink{display:block;text-align:center;font-size:12px;color:#128c7e;padding:4px 0 8px;background:#fff;text-decoration:none}' +
     '.zoom{position:fixed;inset:0;background:rgba(0,0,0,.85);display:none;align-items:center;justify-content:center;z-index:2}' +
     '.zoom.open{display:flex}.zoom img{max-width:92vw;max-height:88vh;border-radius:8px}' +
@@ -155,11 +175,12 @@
     items.forEach(function (p) {
       var c = document.createElement('div');
       c.className = 'card';
-      var wa = waUrl('Hi, I am interested in design ' + p.code + ' (' + p.title + (p.price != null ? ', ' + inr(p.price) : '') + '). Is it available?');
+      var wa = waUrl('Hi, I am interested in design ' + p.code + ' (' + p.title + (p.price != null ? ', ' + inr(p.price) : '') + '). Is it available?' + (p.photo ? '\n\nPhoto: ' + p.photo : ''));
       c.innerHTML =
         (p.image ? '<img loading="lazy" src="' + esc(p.image) + '" alt="' + esc(p.title) + '">' : '') +
         '<div class="b"><div class="n">' + esc(p.title) + '</div>' +
-        '<div class="meta">' + esc(p.code) + ' · ' + esc(p.purity) + (p.weightG ? ' · ' + p.weightG + ' g' : '') + '</div>' +
+        '<div class="meta">' + esc(p.code) + ' · ' + esc(p.purity) + '</div>' +
+        (p.discountPct ? '<div class="off">On ' + OFFER_LABEL + ' making charge' + (p.discountQty ? ' · for ' + p.discountQty + (p.discountQty == 1 ? ' piece' : ' pieces') : '') + '</div>' : '') +
         '<div class="p">' + (p.price != null ? inr(p.price) : 'Price on request') + (p.compareAtPrice ? '<s>' + inr(p.compareAtPrice) + '</s>' : '') + '</div>' +
         (wa ? '<a class="wa" target="_blank" rel="noopener" href="' + esc(wa) + '">Enquire on WhatsApp</a>' : '') +
         '</div>';
@@ -170,7 +191,7 @@
   }
 
   function addChips() {
-    var chips = ['📷 Find similar from a photo', 'Show me gold rings', 'Mangalsutra designs', 'Earrings under ₹30,000', 'Silver murti', 'Where is your store?'];
+    var chips = ['📷 Find similar from a photo', '🏷️ ' + OFFER_LABEL + ' making charge', 'Show me gold rings','Mangalsutra designs', 'Earrings under ₹30,000', 'Silver murti', 'Where is your store?'];
     var d = document.createElement('div');
     d.className = 'chips';
     chips.forEach(function (t, i) {
@@ -187,11 +208,66 @@
   function render() {
     msgs.innerHTML = '';
     addBubble('bot', cfg.welcomeMessage);
+    form.style.display = customer ? '' : 'none';
+    if (!customer) { addStartForm(); return; }
     state.log.forEach(function (e) {
       if (e.t === 'cards') addCards(e.items, e.more, e);
       else addBubble(e.t, e.text, e.image);
     });
-    if (!state.log.length) addChips();
+    if (!state.log.some(function (e) { return e.t === 'user'; })) addChips();
+  }
+
+  function addStartForm() {
+    var f = document.createElement('form');
+    f.className = 'start';
+    f.noValidate = true;
+    f.innerHTML =
+      '<p>Before we start, please share your details so our team can help you better.</p>' +
+      '<label>Full name</label><input name="name" autocomplete="name" maxlength="80" required>' +
+      '<label>Mobile number</label><input name="phone" type="tel" inputmode="numeric" autocomplete="tel" maxlength="14" placeholder="10-digit mobile number" required>' +
+      '<label>Email</label><input name="email" type="email" autocomplete="email" maxlength="120" required>' +
+      '<label>City</label><input name="city" autocomplete="address-level2" maxlength="60" required>' +
+      '<label>Pincode</label><input name="pincode" inputmode="numeric" autocomplete="postal-code" maxlength="6" placeholder="6-digit pincode" required>' +
+      '<div class="ferr" role="alert"></div>' +
+      '<button type="submit">Start chat</button>' +
+      '<small>We only use these details to reply to you.</small>';
+    var err = f.querySelector('.ferr'), btn = f.querySelector('button');
+    function val(n) { return f.elements[n].value.trim(); }
+    function check() {
+      if (val('name').length < 2) return ['name', 'Please enter your name.'];
+      if (!/^[6-9]\d{9}$/.test(val('phone').replace(/\D/g, '').replace(/^(?:91|0)(?=\d{10}$)/, ''))) return ['phone', 'Please enter a valid 10-digit mobile number.'];
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(val('email'))) return ['email', 'Please enter a valid email address.'];
+      if (val('city').length < 2) return ['city', 'Please enter your city.'];
+      if (!/^[1-9]\d{5}$/.test(val('pincode'))) return ['pincode', 'Please enter a valid 6-digit pincode.'];
+      return null;
+    }
+    f.onsubmit = function (e) {
+      e.preventDefault();
+      var bad = check();
+      if (bad) { err.textContent = bad[1]; f.elements[bad[0]].focus(); return; }
+      err.textContent = '';
+      btn.disabled = true;
+      btn.textContent = 'Starting…';
+      var details = { name: val('name'), phone: val('phone'), email: val('email'), city: val('city'), pincode: val('pincode') };
+      fetch(API + '/api/customer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(Object.assign({ conversationId: state.conversationId, pageUrl: location.href }, details)),
+      })
+        .then(function (r) { return r.json().then(function (j) { if (!r.ok) throw new Error(j.error || 'Please try again.'); return j; }); })
+        .then(function (j) {
+          customer = details;
+          try { localStorage.setItem(CUSTOMER_KEY, JSON.stringify(customer)); } catch (e2) { /* storage blocked */ }
+          state.conversationId = j.conversationId;
+          state.log.push({ t: 'bot', text: 'Thank you, ' + details.name.split(' ')[0] + '! 🙏 What are you looking for today?' });
+          writeState();
+          render();
+          input.focus();
+        })
+        .catch(function (e3) { err.textContent = e3.message || 'Network error - please try again.'; btn.disabled = false; btn.textContent = 'Start chat'; });
+    };
+    msgs.appendChild(f);
+    setTimeout(function () { if (panel.classList.contains('open')) f.elements.name.focus(); }, 60);
   }
 
   function setBusy(b) {
@@ -284,7 +360,7 @@
     fetch(API + '/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ conversationId: state.conversationId, message: text, image: image || undefined, pageUrl: location.href }),
+      body: JSON.stringify({ conversationId: state.conversationId, message: text, image: image || undefined, pageUrl: location.href, customer: customer || undefined }),
     })
       .then(function (res) {
         if (!res.ok) return res.json().catch(function () { return {}; }).then(function (j) { throw new Error(j.error || 'Request failed'); });
@@ -322,7 +398,7 @@
     writeState();
     panel.classList.toggle('open', o);
     fab.classList.toggle('hide', o);
-    if (o) { scroll(); setTimeout(function () { input.focus(); }, 50); }
+    if (o) { scroll(); setTimeout(function () { var first = root.querySelector('.start input'); (first || input).focus(); }, 50); }
   }
 
   fab.onclick = function () { open(!panel.classList.contains('open')); };

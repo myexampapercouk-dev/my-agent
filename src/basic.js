@@ -5,6 +5,7 @@ import { load, save, id } from './store.js';
 import { searchProducts, findByCode, cardOf, words, SYN, STOP, typeTerms } from './search.js';
 import { scoresByMeaning, romanize } from './meaning.js';
 import { findProducts, vectorSearchProducts } from './vectordb.js';
+import { syncLeadsToCrm } from './crm-leads.js';
 
 const EXTRA_STOP = new Set([
   'is', 'are', 'was', 'be', 'i', 'my', 'your', 'we', 'our', 'it', 'this', 'that', 'what', 'how', 'can', 'please', 'pls',
@@ -159,6 +160,17 @@ export async function photoReply(conv, buffer, message) {
 // scored 0.33-0.90, unrelated questions 0.10-0.17).
 const MEANING_MIN = 0.3;
 
+// Offers set in the CRM (a discount % on some pieces) are always shown to
+// customers as this making charge, whatever % was set (store's choice).
+export const OFFER_LABEL = '3%';
+
+// " 🏷️ 2 of them are on only 3% making charge..." when any shown design has an offer.
+function discountNote(cards) {
+  const n = cards.filter((c) => c.discountPct).length;
+  if (!n) return '';
+  return ` 🏷️ ${n === cards.length ? (n === 1 ? 'It is' : 'All are') : `${n} of them ${n === 1 ? 'is' : 'are'}`} on only ${OFFER_LABEL} making charge for limited pieces - see the tag on the card.`;
+}
+
 /** Returns { text, products: [card...] } for one customer message. */
 export async function basicReply(conv, message) {
   const s = load('settings');
@@ -167,22 +179,30 @@ export async function basicReply(conv, message) {
   const terms = keyTerms(msg);
   const wa = s.whatsappPhone ? ' You can also chat with our team on WhatsApp using the link below.' : '';
 
+  const customer = conv.customer;
   if (GREETING.test(msg)) {
-    return { text: `Namaste! 🙏 How can I help you today? You can ask about our designs (rings, necklaces, earrings, mangalsutra…), prices, or the store.`, products: [] };
+    return { text: `Namaste${customer ? ' ' + customer.name.split(' ')[0] : ''}! 🙏 How can I help you today? You can ask about our designs (rings, necklaces, earrings, mangalsutra…), prices, or the store.`, products: [] };
   }
   if (THANKS.test(msg)) return { text: 'You are welcome! 😊 Anything else I can help you with?', products: [] };
 
   // 1. Phone number → lead
   const phone = msg.replace(/[\s-]/g, '').match(/(?:\+?91)?[6-9]\d{9}/);
   if (phone) {
+    const lastAsk = [...conv.basicHistory].reverse().find((t) => !/\d{10}/.test(t)) || '';
+    // Same number they gave at the start of the chat: already a lead.
+    if (customer && phone[0].slice(-10) === customer.phone) {
+      return { text: `Thank you! 🙏 Our team already has your number (${customer.phone}) and will contact you shortly.`, products: [] };
+    }
     const leads = load('leads');
     const nameMatch = msg.match(/(?:i am|i'm|my name is|name is|naam|mera naam)\s+([a-z][a-z ]{1,30})/i);
-    const lastAsk = [...conv.basicHistory].reverse().find((t) => !/\d{10}/.test(t)) || '';
     leads.unshift({
-      id: id(), name: nameMatch ? nameMatch[1].trim() : '', phone: phone[0], interest: lastAsk.slice(0, 500) || msg.slice(0, 500),
+      id: id(), name: nameMatch ? nameMatch[1].trim() : customer?.name || '', phone: phone[0],
+      ...(customer ? { email: customer.email, city: customer.city, pincode: customer.pincode } : {}),
+      interest: lastAsk.slice(0, 500) || msg.slice(0, 500),
       conversationId: conv.id, pageUrl: conv.pageUrl, status: 'new', createdAt: new Date().toISOString(),
     });
     save('leads', leads);
+    syncLeadsToCrm();
     return { text: `Thank you! 🙏 I have shared your number (${phone[0]}) with our team — they will contact you shortly.`, products: [] };
   }
 
@@ -191,10 +211,24 @@ export async function basicReply(conv, message) {
   const byCode = codeWord && findByCode(codeWord[0]);
   if (byCode) {
     const price = byCode.price != null ? `Today's price is ${inr(byCode.price)}.` : 'Please ask our team for the price.';
-    return { text: `Here is design ${byCode.code} — ${byCode.title} (${byCode.purity}${byCode.weightG ? `, ${byCode.weightG} g` : ''}). ${price}`, products: [cardOf(byCode)] };
+    return { text: `Here is design ${byCode.code} — ${byCode.title} (${byCode.purity}). ${price}`, products: [cardOf(byCode)] };
   }
   if (codeWord && /\d/.test(codeWord[0]) && terms.length <= 3 && !/^k?\d{2}k?$/i.test(codeWord[0])) {
     return { text: `I couldn't find design ${codeWord[0].toUpperCase()} in our online catalogue. Share your phone number and our team will check it for you.${wa}`, products: [] };
+  }
+
+  // 2b. Offers (also the 'Making charge offers' chip in the widget)
+  if (/\b(offers?|discounts?|deals?|sale|making charges?|% ?off|percent off|scheme)\b/i.test(msg)) {
+    const r = searchProducts({ offers_only: true, limit: PAGE_SIZE });
+    if (r.total_matches) {
+      const cards = r.products.map((p) => cardOf(findByCode(p.code)));
+      return {
+        text: `These designs are on only ${OFFER_LABEL} making charge right now (${r.total_matches} design${r.total_matches > 1 ? 's' : ''}, limited pieces). Tap "Enquire on WhatsApp" on any design you like.`,
+        products: cards,
+        more: r.total_matches > cards.length ? { search: { query: '', offers_only: true }, offset: cards.length, total: r.total_matches } : null,
+      };
+    }
+    return { text: "There are no making charge offers running right now, but ask me about any design and I will show you today's price.", products: [] };
   }
 
   // 3. Trained Q&A
@@ -274,7 +308,7 @@ export async function basicReply(conv, message) {
       const cards = r.products.map((p) => cardOf(findByCode(p.code)));
       const count = r.total_matches > cards.length ? `${r.total_matches} designs` : `${r.total_matches} design${r.total_matches > 1 ? 's' : ''}`;
       return {
-        text: `I found ${count}${budgetText(filters)} at today's price. Tap "Enquire on WhatsApp" on any design you like, or share your phone number and our team will call you.`,
+        text: `I found ${count}${budgetText(filters)} at today's price.${discountNote(cards)} Tap "Enquire on WhatsApp" on any design you like, or share your phone number and our team will call you.`,
         products: cards,
         more: r.total_matches > cards.length ? { search, offset: cards.length, total: r.total_matches } : null,
       };

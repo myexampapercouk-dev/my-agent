@@ -6,6 +6,7 @@ import { load, save, id } from './store.js';
 import { searchProducts, findByCode, catalogSummary, publicProduct, cardOf } from './search.js';
 import { basicReply, photoReply, PAGE_SIZE } from './basic.js';
 import { findProducts } from './vectordb.js';
+import { syncLeadsToCrm } from './crm-leads.js';
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY || undefined });
 
@@ -37,6 +38,7 @@ const TOOLS = [
         max_price: num,
         min_weight: { type: 'number', description: 'grams' },
         max_weight: { type: 'number', description: 'grams' },
+        offers_only: { type: 'boolean', description: 'true to list only designs that currently have a discount (discount_pct in results)' },
         limit: { type: 'integer', description: 'max results, default 8, max 15' },
       },
       required: ['query'],
@@ -111,6 +113,8 @@ function buildSystem() {
 How to work:
 - Answer from the store knowledge below and from the catalogue tools. Never invent prices, weights, stock, offers, policies, addresses or timings. If something is not covered, say you will check with the team, offer WhatsApp, and call flag_for_training.
 - If the customer sends a photo, briefly say what you see (type, metal, style), call find_similar_to_photo, then show_products with the closest matches. If the photo is not jewellery, say so politely.
+- Some designs are on a special offer (discount_pct > 0, discount_on_first_n_pieces = how many pieces get it, mrp_inr = the normal price). Always describe it to customers as "on 3% making charge" (e.g. "on 3% making charge - for 5 pieces"), whatever discount_pct says - never mention discount_pct or "% off". For "offers"/"discount"/"making charge" questions call search_products with offers_only true.
+- Never mention a design's weight (grams) to customers, in text or otherwise; talk about the design, purity and price only.
 - For any product question, call search_products, then show_products with the best matches. Prices come from the store CRM at today's gold/silver rate and can change daily; say "today's price" rather than promising a fixed price.
 - A design in the catalogue is available to enquire about; final availability and price are confirmed by the store team.
 - If the customer wants to buy, book, visit, get a callback or a custom design, collect their name and phone number and call save_lead, then share the WhatsApp option.
@@ -177,6 +181,7 @@ async function runTool(name, input, ctx) {
         createdAt: new Date().toISOString(),
       });
       save('leads', leads);
+      syncLeadsToCrm();
       ctx.conv.leadSaved = true;
       return 'Lead saved. The store team will contact the customer.';
     }
@@ -240,6 +245,7 @@ setInterval(() => {
 function record(conv, entry) {
   const t = transcriptOf(conv.id);
   t.pageUrl ||= conv.pageUrl;
+  if (conv.customer) t.customer = conv.customer;
   t.messages.push({ ...entry, at: new Date().toISOString() });
   t.updatedAt = new Date().toISOString();
   save('conversations');
@@ -310,7 +316,13 @@ export async function chat(conv, userText, emit, image = null) {
       const params = {
         model,
         max_tokens: 16000,
-        system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+        system: [
+          { type: 'text', text: system, cache_control: { type: 'ephemeral' } },
+          ...(conv.customer ? [{
+            type: 'text',
+            text: `The customer filled in their details before chatting and they are already saved as a lead for the store team: name ${conv.customer.name}, phone ${conv.customer.phone}, email ${conv.customer.email}, city ${conv.customer.city}, pincode ${conv.customer.pincode}. Address them by name, never ask for these details again, and only call save_lead if they give a different phone number.`,
+          }] : []),
+        ],
         tools: TOOLS,
         messages: conv.messages,
         cache_control: { type: 'ephemeral' },

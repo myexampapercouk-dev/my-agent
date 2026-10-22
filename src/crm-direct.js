@@ -11,7 +11,7 @@ import config from './config.js';
 const BASE = () => (config.CRM_BASE_URL || 'https://crm.ittanjeweller.com').replace(/\/$/, '');
 
 export function directConfigured() {
-  return Boolean(config.CRM_EMAIL && config.CRM_PASSWORD);
+  return Boolean(config.CRM_CATALOG_API_KEY || (config.CRM_EMAIL && config.CRM_PASSWORD));
 }
 
 // --- minimal cookie jar -------------------------------------------------------
@@ -145,7 +145,7 @@ function purityCode(label) {
   const s = String(label || '').trim().toUpperCase();
   const k = s.match(/^(\d{2})\s*K/);
   if (k) return `K${k[1]}`;
-  const silver = s.match(/^S?(\d{3})\b/); // "925 Silver" / "S925" → S925
+  const silver = s.match(/^S?(\d{3})\b/); // "925 Silver" / "S925" â†’ S925
   if (silver) return `S${silver[1]}`;
   return s.split(/\s/)[0] || '';
 }
@@ -167,7 +167,7 @@ export function buildProducts(designs, pieces, { includeOutOfStock = false } = {
 
   const products = [];
   for (const d of designs) {
-    if (d.isDeleted || !d.isPublished) continue;
+    if (d.isDeleted || !d.isPublished || !d.showOnWebsite) continue; // only designs ticked 'Website' in the CRM
     const code = String(d.designCode || '').trim();
     const inStock = (stock.get(code) || []).filter((s) => s.price != null).sort((a, b) => a.price - b.price);
     if (!inStock.length && !includeOutOfStock) continue;
@@ -175,7 +175,12 @@ export function buildProducts(designs, pieces, { includeOutOfStock = false } = {
     const cheapest = inStock[0];
     const name = String(d.name || '').replace(/\s+/g, ' ').trim();
     const markup = parseFloat(d.compareAtMarkupPct) || 0;
-    const price = cheapest ? Math.round(cheapest.price) : null;
+    const listPrice = cheapest ? Math.round(cheapest.price) : null;
+    // Promotional discount set on the design in the CRM: X% off for the first N pieces.
+    const discPct = d.discountOnWebsite ? parseFloat(d.discountPct) || 0 : 0; // only once ticked 'On website' in the CRM
+    const discQty = parseInt(d.discountQty, 10) || 0;
+    const discounted = listPrice != null && discPct > 0 && discQty > 0;
+    const price = discounted ? Math.round(listPrice * (1 - discPct / 100)) : listPrice;
     const img = d.mediaUrls?.[0] || d.thumbnailUrl || null;
     const metal = /silver/i.test(name) ? 'silver' : String(d.metal || '').toLowerCase() || 'other';
     const category = cheapest?.category || pretty(d.category);
@@ -186,7 +191,9 @@ export function buildProducts(designs, pieces, { includeOutOfStock = false } = {
       metal,
       weightG: cheapest?.weight ?? (parseFloat(d.representativeWeightG) || null),
       price,
-      compareAtPrice: price && markup > 0 ? Math.round(price * (1 + markup / 100)) : null,
+      compareAtPrice: discounted ? listPrice : price && markup > 0 ? Math.round(price * (1 + markup / 100)) : null,
+      discountPct: discounted ? discPct : null,
+      discountQty: discounted ? discQty : null,
       inStock: inStock.length,
       weightsG: inStock.map((s) => s.weight).filter(Boolean),
       image: img ? base + img : null,
@@ -198,7 +205,47 @@ export function buildProducts(designs, pieces, { includeOutOfStock = false } = {
   return products;
 }
 
+// Preferred source: the CRM's website product feed (/api/catalog/products). It
+// only needs CRM_CATALOG_API_KEY, lists exactly the designs ticked "Website" in
+// the CRM, and already carries today's price, stock and any discount.
+async function fetchFromFeed(settings) {
+  const all = [];
+  let designs = 0;
+  for (let page = 1; ; page++) {
+    const res = await fetch(`${BASE()}/api/catalog/products?page=${page}&pageSize=100`, {
+      headers: { authorization: `Bearer ${config.CRM_CATALOG_API_KEY}`, 'user-agent': 'ittan-ai-agent/1.0' },
+    });
+    if (res.status === 401) throw new Error('CRM rejected CRM_CATALOG_API_KEY (401) - check src/config.js');
+    if (!res.ok) throw new Error(`CRM product feed failed: HTTP ${res.status}`);
+    const data = await res.json();
+    all.push(...data.products);
+    if (!data.pagination?.hasNext) break;
+  }
+  designs = all.length;
+  const products = all
+    .filter((p) => p.showOnWebsite && p.price && (p.inStock > 0 || settings.includeOutOfStock))
+    .map((p) => ({
+      code: p.code,
+      title: String(p.name || '').replace(/\s+/g, ' ').trim(),
+      purity: p.purity || '',
+      metal: /silver/i.test(p.name) ? 'silver' : String(p.metal || '').toLowerCase() || 'other',
+      weightG: p.weightG ?? null,
+      price: Math.round(p.price),
+      compareAtPrice: p.compareAtPrice || null,
+      discountPct: p.discountPct || null,
+      discountQty: p.discountQty || null,
+      inStock: p.inStock,
+      weightsG: [],
+      image: p.images?.[0] || null,
+      thumb: p.thumbnail || p.images?.[0] || null,
+      catalogues: [pretty(p.type), ...(p.gender || []).map((g) => GENDER[g] || pretty(g))].filter(Boolean),
+      url: null,
+    }));
+  return { products, stats: { designs, pieces: null, piecesInStock: null, shown: products.length } };
+}
+
 export async function fetchDirect(settings) {
+  if (config.CRM_CATALOG_API_KEY) return fetchFromFeed(settings);
   const jar = await login();
   const designs = await fetchAllDesigns(jar);
   const piecesRes = await req(jar, '/dashboard/inventory/pieces/export');

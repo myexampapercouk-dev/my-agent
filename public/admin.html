@@ -236,9 +236,9 @@ const VIEWS = {
 
   async leads(v) {
     const leads = await api('/leads');
-    v.innerHTML = `<div class="card"><h2>Leads captured by the agent</h2><p class="help">Customers who shared their phone number for a callback, visit, booking or custom order.</p>
-      ${leads.length ? `<table><tr><th>Date</th><th>Name</th><th>Phone</th><th>Interested in</th><th>Status</th><th></th></tr>${leads.map((l) => `
-        <tr data-id="${l.id}"><td>${when(l.createdAt)}</td><td>${esc(l.name)}</td><td><a href="tel:${esc(l.phone)}">${esc(l.phone)}</a></td><td>${esc(l.interest)}</td>
+    v.innerHTML = `<div class="card"><h2>Leads captured by the agent</h2><p class="help">Customers who filled in their details at the start of the chat, or shared a phone number for a callback, visit, booking or custom order. Every lead is also sent to CRM &rarr; Leads.</p>
+      ${leads.length ? `<table><tr><th>Date</th><th>Name</th><th>Phone</th><th>Email</th><th>City / Pincode</th><th>Interested in</th><th>Status</th><th></th></tr>${leads.map((l) => `
+        <tr data-id="${l.id}"><td>${when(l.createdAt)}</td><td>${esc(l.name)}</td><td><a href="tel:${esc(l.phone)}">${esc(l.phone)}</a></td><td>${l.email ? `<a href="mailto:${esc(l.email)}">${esc(l.email)}</a>` : '<span class="muted">—</span>'}</td><td>${l.city || l.pincode ? esc([l.city, l.pincode].filter(Boolean).join(' · ')) : '<span class="muted">—</span>'}</td><td>${esc(l.interest)}</td>
         <td><select>${['new','contacted','converted','closed'].map((s) => `<option ${s === l.status ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
         <td><button class="btn ghost view">Chat</button></td></tr>`).join('')}</table>` : '<p class="muted">No leads yet.</p>'}</div>`;
     v.querySelectorAll('tr[data-id]').forEach((tr) => {
@@ -256,7 +256,7 @@ const VIEWS = {
         ${cat.stats ? `<div class="grid">
           <div class="stat"><div class="v">${cat.stats.shown}</div><div class="l">In-stock designs the agent shows</div></div>
           <div class="stat"><div class="v">${cat.stats.designs}</div><div class="l">Designs in CRM</div></div>
-          <div class="stat"><div class="v">${cat.stats.piecesInStock}</div><div class="l">Pieces in stock (of ${cat.stats.pieces})</div></div></div>` : ''}
+          ${cat.stats.piecesInStock != null ? `<div class="stat"><div class="v">${cat.stats.piecesInStock}</div><div class="l">Pieces in stock (of ${cat.stats.pieces})</div></div>` : ''}</div>` : ''}
         ${cat.error ? `<p style="color:var(--bad)">Last sync failed: ${esc(cat.error)} — still showing the previous product list.</p>` : ''}
         <div class="row" style="margin-top:12px"><button class="btn" id="syncNow">Sync now</button><span class="muted" id="syncInfo">Last sync: ${when(cat.syncedAt)}</span></div>
       </div>` : '';
@@ -273,9 +273,9 @@ const VIEWS = {
         <div class="row"><input type="text" id="pq" placeholder="e.g. ladies ring, mangalsutra, D620" style="flex:1"><button class="btn ghost" id="psearch">Search</button></div>
         <div id="presults" style="margin-top:12px"></div></div>`;
     const drawResults = (r) => {
-      $('#presults').innerHTML = `<p class="muted">${r.matches} match(es)</p>` + (r.items.length ? `<table><tr><th>Design</th><th>Purity</th><th>Weight</th><th>Price today</th><th>In stock</th><th>Category</th></tr>${r.items.map((p) => `
+      $('#presults').innerHTML = `<p class="muted">${r.matches} match(es)</p>` + (r.items.length ? `<table><tr><th>Design</th><th>Purity</th><th>Price today</th><th>Discount</th><th>In stock</th><th>Category</th></tr>${r.items.map((p) => `
         <tr><td><div class="prod">${p.thumb ? `<img src="${esc(p.thumb)}" loading="lazy">` : ''}<div><b>${esc(p.title)}</b><div class="muted">${esc(p.code)}</div></div></div></td>
-        <td>${esc(p.purity)}</td><td>${p.weightG != null ? p.weightG + ' g' : '—'}</td><td>${p.price != null ? inr(p.price) : 'Not shown in CRM'}</td><td>${p.inStock ?? '—'}</td><td class="muted">${esc(p.catalogues.slice(0, 3).join(', '))}</td></tr>`).join('')}</table>` : '');
+        <td>${esc(p.purity)}</td><td>${p.price != null ? inr(p.price) : 'Not shown in CRM'}</td><td>${p.discountPct ? '<b style="color:#b12704">' + p.discountPct + '% off</b>' + (p.discountQty ? ' <span class="muted">(first ' + p.discountQty + (p.discountQty == 1 ? ' pc' : ' pcs') + ')</span>' : '') + (p.compareAtPrice ? ' <s class="muted">' + inr(p.compareAtPrice) + '</s>' : '') : '—'}</td><td>${p.inStock ?? '—'}</td><td class="muted">${esc(p.catalogues.slice(0, 3).join(', '))}</td></tr>`).join('')}</table>` : '');
     };
     drawResults(cat);
     const search = async () => drawResults(await api('/catalog?q=' + encodeURIComponent($('#pq').value)));
@@ -307,13 +307,13 @@ const VIEWS = {
       <label>AI model</label><select id="model">${Object.entries(models).map(([k, l]) => `<option value="${k}" ${k === s.model ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select>
       <label>Thinking effort</label><select id="effort">${['low','medium','high'].map((e) => `<option ${e === s.effort ? 'selected' : ''}>${e}</option>`).join('')}</select>
       <p class="muted">Low is fast and fine for shop chat. Raise it if answers feel careless (slower and costs more).</p>
-      <label>Sync CRM every (hours)</label><input type="number" id="syncIntervalHours" min="0.25" step="0.25" value="${esc(s.syncIntervalHours)}">
+      <label>CRM sync</label><p class="muted">Automatic: every 15 minutes, and straight after every website sync (the website tells the agent).</p>
       <label>Allowed websites (optional)</label><input type="text" id="allowedOrigins" value="${esc(s.allowedOrigins)}" placeholder="https://ittanjeweller.com https://www.ittanjeweller.com">
       <p class="muted">Leave empty to allow the chat on any site. Otherwise list the exact site addresses, separated by spaces.</p>
       <div style="height:12px"></div><button class="btn" id="save">Save settings</button></div>`;
     $('#save').onclick = async () => {
       const body = {};
-      ['businessName','assistantName','welcomeMessage','whatsappPhone','accentColor','model','effort','syncIntervalHours','allowedOrigins'].forEach((k) => body[k] = $('#' + k).value);
+      ['businessName','assistantName','welcomeMessage','whatsappPhone','accentColor','model','effort','allowedOrigins'].forEach((k) => body[k] = $('#' + k).value);
       await api('/settings', { method: 'PUT', body });
       toast('Settings saved');
     };

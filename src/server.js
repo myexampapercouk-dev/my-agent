@@ -7,6 +7,7 @@ import { ZipArchive } from 'archiver';
 import { load, save, id, flushAll, DATA_DIR } from './store.js';
 import { syncCatalog, scheduleSync, catalogueToken, CRM_BASE } from './crm.js';
 import { directConfigured } from './crm-direct.js';
+import { syncLeadsToCrm } from './crm-leads.js';
 import { similarPage, indexStats } from './vision.js';
 import { warmUp } from './meaning.js';
 import { findProducts, vectorStats } from './vectordb.js';
@@ -94,6 +95,12 @@ app.post('/api/chat', async (req, res) => {
 
   const conv = getConversation(req.body.conversationId, req.body.pageUrl);
   if (conv.busy) return res.status(409).json({ error: 'Please wait for the previous reply.' });
+  // The widget re-sends the customer's details so a chat that restarts (server
+  // restart, 6-hour expiry) still knows who it is talking to.
+  if (!conv.customer && req.body.customer) {
+    const c = cleanCustomer(req.body.customer);
+    if (!c.error) conv.customer = c;
+  }
   let image = null;
   try {
     image = readPhoto(req.body.image, conv.id);
@@ -114,6 +121,50 @@ app.post('/api/chat', async (req, res) => {
   }
 });
 
+// Details the customer gives before chatting: name, phone, email, city, pincode.
+// Returns the cleaned details, or { error } with a message for the customer.
+function cleanCustomer(input) {
+  const s = (v, max) => (typeof v === 'string' ? v.trim().replace(/\s+/g, ' ').slice(0, max) : '');
+  const name = s(input?.name, 80);
+  const digits = s(input?.phone, 20).replace(/\D/g, '').replace(/^(?:91|0)(?=\d{10}$)/, '');
+  const email = s(input?.email, 120).toLowerCase();
+  const city = s(input?.city, 60);
+  const pincode = s(input?.pincode, 10).replace(/\s/g, '');
+  if (name.length < 2) return { error: 'Please enter your name.' };
+  if (!/^[6-9]\d{9}$/.test(digits)) return { error: 'Please enter a valid 10-digit mobile number.' };
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return { error: 'Please enter a valid email address.' };
+  if (city.length < 2) return { error: 'Please enter your city.' };
+  if (!/^[1-9]\d{5}$/.test(pincode)) return { error: 'Please enter a valid 6-digit pincode.' };
+  return { name, phone: digits, email, city, pincode };
+}
+
+// Start of chat: save the customer's details as a lead (and send it to the CRM).
+app.post('/api/customer', (req, res) => {
+  if (limited(`customer:${req.ip}`, 10, 10 * 60_000)) return res.status(429).json({ error: 'Too many attempts - please wait a few minutes.' });
+  const c = cleanCustomer(req.body);
+  if (c.error) return res.status(400).json({ error: c.error });
+  const conv = getConversation(req.body.conversationId, req.body.pageUrl);
+  conv.customer = c;
+  const leads = load('leads');
+  leads.unshift({
+    id: id(), ...c, interest: 'Started a chat on the website', conversationId: conv.id,
+    pageUrl: conv.pageUrl, status: 'new', createdAt: new Date().toISOString(),
+  });
+  save('leads', leads);
+  syncLeadsToCrm();
+  res.json({ conversationId: conv.id });
+});
+
+// The website calls this right after its own CRM sync so the chat shows the same
+// designs. Protected with the CRM catalogue key both of them already use.
+app.post('/api/sync-hook', (req, res) => {
+  if (limited('sync-hook', 30, 10 * 60_000)) return res.status(429).json({ error: 'Too many requests.' });
+  const key = config.CRM_CATALOG_API_KEY || '';
+  if (!key || !safeEqual(String(req.headers.authorization || ''), `Bearer ${key}`)) return res.status(401).json({ error: 'Not allowed.' });
+  syncCatalog().catch((e) => console.error('[crm] sync after website sync failed:', e.message));
+  res.status(202).json({ ok: true, message: 'Sync started.' });
+});
+
 // "Load more" in the chat: next page of a product search the agent already ran.
 app.post('/api/products', async (req, res) => {
   if (limited(`more:${req.ip}`, 120, 10 * 60_000)) return res.status(429).json({ error: 'Too many requests - please wait a minute.' });
@@ -129,6 +180,7 @@ app.post('/api/products', async (req, res) => {
   const search = { query: typeof s.query === 'string' ? s.query.slice(0, 200) : '' };
   if (['gold', 'silver', 'platinum'].includes(s.metal)) search.metal = s.metal;
   if (typeof s.purity === 'string') search.purity = s.purity.slice(0, 10);
+  if (s.offers_only === true) search.offers_only = true;
   for (const k of ['min_price', 'max_price', 'min_weight', 'max_weight']) if (Number.isFinite(s[k])) search[k] = s[k];
   const offset = Math.max(0, Math.min(5000, Number(req.body?.offset) || 0));
   const r = await findProducts({ ...search, limit: PAGE_SIZE, offset });
@@ -355,6 +407,7 @@ app.listen(PORT, () => {
   if (!ADMIN_PASSWORD) console.warn('ADMIN_PASSWORD is not set - the admin panel is open without login (fine on your own computer, set one before hosting publicly)');
   syncCatalog().catch((e) => console.error('[crm]', e));
   scheduleSync();
+syncLeadsToCrm();
   setTimeout(warmUp, 20_000).unref(); // load the meaning model once the site is up
 });
 

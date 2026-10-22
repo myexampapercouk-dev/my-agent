@@ -2,11 +2,19 @@
 export default {
   // CRM login (read-only Viewer account is enough) - the agent reads all designs + stock from here
   CRM_BASE_URL: "https://crm.ittanjeweller.com",
-  CRM_EMAIL: "navpreetn87@gmail.com",
-  CRM_PASSWORD: "Fateh@3288",
+  CRM_EMAIL: "admin@ittanjewellers.com",
+  CRM_PASSWORD: "Admin@123",
 
   // Store WhatsApp number for "Enquire on WhatsApp" buttons (used unless changed in Admin → Settings)
   WHATSAPP_PHONE: "9914905216",
+
+  // CRM API key (permission leads:create) - customer phone numbers are saved as Leads in the CRM.
+  // Create it in the CRM under Settings -> Integrations. Empty = leads stay only in this agent.
+  CRM_LEAD_API_KEY: "crm_live_M8eaVBZhSPee2KAjQznBmF8z3hbLwn2E",
+
+  // CRM website-feed key (the CRM's CATALOG_API_SECRET). When set, the agent reads the product list from the
+  // CRM's website feed: only designs ticked 'Website' in the CRM, with price/stock/discount. Empty = old login method.
+  CRM_CATALOG_API_KEY: "931c2d31ad19d57d8516cb2cb066c35cc50d054bf9f2affd",
 
   // Password for the admin panel (/admin). Empty = no login.
   ADMIN_PASSWORD: "Fateh@3288",
