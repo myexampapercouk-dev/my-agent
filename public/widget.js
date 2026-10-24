@@ -28,6 +28,9 @@
   // customers as this making charge, whatever % was set (store's choice).
   var OFFER_LABEL = '3%';
 
+  // "Enquire on WhatsApp" goes to whichever of the store team the customer picks.
+  var TEAM = [['9914905216', 'Manpreet'], ['9814813731', 'Sukhpreet'], ['7009731485', 'Mandeep']];
+
   var cfg = { assistantName: 'Assistant', welcomeMessage: 'Hi! How can I help you?', accentColor: '#b8860b', whatsappPhone: '' };
 
   var host = document.createElement('div');
@@ -62,7 +65,7 @@
     '.card .meta{font-size:11.5px;color:#7a6c58}' +
     '.card .off{align-self:flex-start;background:#fdecea;color:#b12704;font-size:11px;font-weight:700;padding:2px 7px;border-radius:6px;margin:2px 0}' +
 '.card .p{font-size:14.5px;font-weight:700;color:#1f1f1f}.card .p s{font-weight:400;color:#9a8f80;font-size:12px;margin-left:5px}' +
-    '.card a.wa{margin-top:auto;align-self:flex-start;background:#25d366;color:#fff;text-decoration:none;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px}' +
+    '.card .was{margin-top:auto;display:flex;flex-wrap:wrap;gap:4px}.card a.wa{background:#25d366;color:#fff;text-decoration:none;font-size:12px;font-weight:600;padding:5px 10px;border-radius:7px}' +
     '.more{align-self:stretch;border:1px solid var(--accent);background:#fff;color:var(--accent);border-radius:10px;padding:9px;font-size:13.5px;font-weight:600;cursor:pointer}' +
     '.more:disabled{opacity:.6;cursor:default}' +
     '.end{text-align:center;font-size:12.5px;color:#8a7a62;padding:4px 0}' +
@@ -175,14 +178,14 @@
     items.forEach(function (p) {
       var c = document.createElement('div');
       c.className = 'card';
-      var wa = waUrl('Hi, I am interested in design ' + p.code + ' (' + p.title + (p.price != null ? ', ' + inr(p.price) : '') + '). Is it available?' + (p.photo ? '\n\nPhoto: ' + p.photo : ''));
+      var waMsg = 'Hi, I am interested in design ' + p.code + ' (' + p.title + (p.price != null ? ', ' + inr(p.price) : '') + '). Is it available?' + (p.photo ? '\n\nPhoto: ' + p.photo : '');
       c.innerHTML =
         (p.image ? '<img loading="lazy" src="' + esc(p.image) + '" alt="' + esc(p.title) + '">' : '') +
         '<div class="b"><div class="n">' + esc(p.title) + '</div>' +
         '<div class="meta">' + esc(p.code) + ' · ' + esc(p.purity) + '</div>' +
         (p.discountPct ? '<div class="off">On ' + OFFER_LABEL + ' making charge' + (p.discountQty ? ' · for ' + p.discountQty + (p.discountQty == 1 ? ' piece' : ' pieces') : '') + '</div>' : '') +
         '<div class="p">' + (p.price != null ? inr(p.price) : 'Price on request') + (p.compareAtPrice ? '<s>' + inr(p.compareAtPrice) + '</s>' : '') + '</div>' +
-        (wa ? '<a class="wa" target="_blank" rel="noopener" href="' + esc(wa) + '">Enquire on WhatsApp</a>' : '') +
+        '<div class="was">' + TEAM.map(function (m) { return '<a class="wa" target="_blank" rel="noopener" href="' + esc('https://wa.me/91' + m[0] + '?text=' + encodeURIComponent(waMsg)) + '">WhatsApp ' + esc(m[1]) + '</a>'; }).join('') + '</div>' +
         '</div>';
       var img = c.querySelector('img');
       if (img) img.addEventListener('click', function () { zoom.querySelector('img').src = p.image.replace('-thumb.', '.'); zoom.classList.add('open'); });
